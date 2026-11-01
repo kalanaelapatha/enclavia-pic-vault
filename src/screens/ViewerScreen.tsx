@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, StatusBar, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
@@ -6,6 +6,7 @@ import { IconButton } from '../components/Header';
 import VaultImageView from '../native/VaultImageViewNativeComponent';
 import type { ScreenProps } from '../navigation/types';
 import { VaultItem, viewerStore } from '../services/vault';
+import { useItems } from '../state/hooks';
 import { useItemActions } from '../state/useItemActions';
 import { space } from '../theme';
 import { formatBytes, formatDate, formatDuration } from '../utils/format';
@@ -20,6 +21,28 @@ export function ViewerScreen({ navigation, route }: ScreenProps<'Viewer'>) {
   const listRef = useRef<FlatList<VaultItem>>(null);
 
   const current = items[index];
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const currentId = useRef(current?.id);
+  currentId.current = current?.id;
+
+  // Pick up edits (new copies, replaced files) while keeping the same photo on screen.
+  const { data: fresh, loading: freshLoading } = useItems(route.params.albumId);
+  useEffect(() => {
+    if (freshLoading || fresh.length === 0) {
+      return;
+    }
+    const signature = (list: VaultItem[]) => list.map(i => `${i.id}:${i.importedAt}`).join('|');
+    if (signature(fresh) === signature(itemsRef.current)) {
+      return; // nothing changed: don't disturb an in-progress swipe
+    }
+    setItems(fresh);
+    const idx = fresh.findIndex(i => i.id === currentId.current);
+    if (idx >= 0) {
+      setIndex(idx);
+      requestAnimationFrame(() => listRef.current?.scrollToIndex({ index: idx, animated: false }));
+    }
+  }, [fresh, freshLoading]);
 
   const actions = useItemActions(route.params.albumId, (kind, ids) => {
     if (kind === 'export') {
@@ -54,7 +77,7 @@ export function ViewerScreen({ navigation, route }: ScreenProps<'Viewer'>) {
       <View style={{ width, height }}>
         {item.type === 'video' ? (
           <Pressable style={StyleSheet.absoluteFill} onPress={() => navigation.navigate('Player', { itemId: item.id, name: item.name })}>
-            <VaultImageView style={StyleSheet.absoluteFill} itemId={item.id} variant="thumb" resizeMode="contain" />
+            <VaultImageView style={StyleSheet.absoluteFill} itemId={item.id} version={item.importedAt} variant="thumb" resizeMode="contain" />
             <View style={styles.playWrap}>
               <View style={styles.play}>
                 <Icon name="play" size={34} color="#fff" />
@@ -65,6 +88,7 @@ export function ViewerScreen({ navigation, route }: ScreenProps<'Viewer'>) {
           <VaultImageView
             style={StyleSheet.absoluteFill}
             itemId={item.id}
+            version={item.importedAt}
             variant="full"
             resizeMode="contain"
             zoomable
@@ -133,6 +157,15 @@ export function ViewerScreen({ navigation, route }: ScreenProps<'Viewer'>) {
             </Text>
           </View>
           <View style={[styles.bottom, { paddingBottom: insets.bottom + space.sm }]}>
+            <BarButton
+              icon={current.type === 'video' ? 'scissors' : 'crop'}
+              label={current.type === 'video' ? 'Cut' : 'Crop'}
+              onPress={() =>
+                current.type === 'video'
+                  ? navigation.navigate('Trim', { itemId: current.id, name: current.name })
+                  : navigation.navigate('Crop', { itemId: current.id, version: current.importedAt })
+              }
+            />
             <BarButton icon="download" label="Save" onPress={() => actions.exportItems([current.id])} />
             <BarButton icon="move" label="Move" onPress={() => actions.moveItems([current.id])} />
             <BarButton icon="trash" label="Delete" onPress={() => actions.deleteItems([current.id])} danger />
@@ -144,7 +177,7 @@ export function ViewerScreen({ navigation, route }: ScreenProps<'Viewer'>) {
   );
 }
 
-function BarButton({ icon, label, onPress, danger }: { icon: 'download' | 'move' | 'trash'; label: string; onPress: () => void; danger?: boolean }) {
+function BarButton({ icon, label, onPress, danger }: { icon: 'download' | 'move' | 'trash' | 'crop' | 'scissors'; label: string; onPress: () => void; danger?: boolean }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.barBtn, pressed && styles.pressed]} accessibilityRole="button">
       <Icon name={icon} color={danger ? '#FCA5A5' : '#fff'} />

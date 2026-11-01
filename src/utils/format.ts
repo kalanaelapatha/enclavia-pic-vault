@@ -20,6 +20,14 @@ export function formatDuration(ms: number): string {
   return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
+/** 83400 -> "1:23.4" (for precise trimming). */
+export function formatClock(ms: number): string {
+  const t = Math.max(0, Math.round(ms / 100)) / 10;
+  const m = Math.floor(t / 60);
+  const s = (t - m * 60).toFixed(1).padStart(4, '0');
+  return `${m}:${s}`;
+}
+
 export function formatDate(ms: number): string {
   if (!ms) {
     return '';

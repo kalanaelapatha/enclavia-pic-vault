@@ -181,6 +181,20 @@ class VaultDatabase private constructor(ctx: Context) :
     })
   }
 
+  /** Replaces an item's content metadata after an in-place edit. */
+  fun updateItem(item: VaultItem, dek: ByteArray) {
+    writableDatabase.update("items", ContentValues().apply {
+      put("mime", item.mime)
+      put("name_enc", FieldCipher.encrypt(item.name, dek))
+      put("size", item.size)
+      put("width", item.width)
+      put("height", item.height)
+      put("duration_ms", item.durationMs)
+      put("imported_at", item.importedAt)
+      put("has_thumb", if (item.hasThumb) 1 else 0)
+    }, "id = ?", arrayOf(item.id))
+  }
+
   /** [albumId] null = every item in the vault. */
   fun listItems(albumId: String?, dek: ByteArray): List<VaultItem> {
     val (where, args) = if (albumId == null) "" to null else "WHERE album_id = ?" to arrayOf(albumId)

@@ -9,6 +9,7 @@ import android.util.LruCache
 import com.enclavia.vault.crypto.EncryptedFile
 import com.enclavia.vault.crypto.KeyManager
 import com.enclavia.vault.data.VaultPaths
+import com.enclavia.vault.media.EncryptedMediaDataSource
 import com.enclavia.vault.media.Imaging
 import java.util.concurrent.Future
 import java.util.concurrent.LinkedBlockingDeque
@@ -28,10 +29,14 @@ object VaultImageLoader {
     val galleryIsVideo: Boolean,
     val full: Boolean,
     val maxSide: Int,
+    /** >= 0: a frame of a vault video at this position. */
+    val frameTimeMs: Long = -1,
+    val version: Long = 0,
   ) {
     val key: String = when {
-      itemId.isNotEmpty() && full -> "f:$itemId:$maxSide"
-      itemId.isNotEmpty() -> "t:$itemId"
+      itemId.isNotEmpty() && frameTimeMs >= 0 -> "v:$itemId:$frameTimeMs:$version"
+      itemId.isNotEmpty() && full -> "f:$itemId:$maxSide:$version"
+      itemId.isNotEmpty() -> "t:$itemId:$version"
       else -> "g:$galleryUri"
     }
     val isEmpty get() = itemId.isEmpty() && galleryUri.isEmpty()
@@ -87,7 +92,9 @@ object VaultImageLoader {
     }
     val keys = KeyManager.get(ctx)
     return keys.withDek { dek ->
-      if (req.full) {
+      if (req.frameTimeMs >= 0) {
+        EncryptedMediaDataSource.frameAt(VaultPaths.blob(ctx, req.itemId), dek, req.frameTimeMs * 1000, 200)
+      } else if (req.full) {
         val bytes = EncryptedFile.decryptToBytes(VaultPaths.blob(ctx, req.itemId), dek)
         try {
           Imaging.decodeFull(bytes, req.maxSide)

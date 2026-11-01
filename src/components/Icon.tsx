@@ -5,7 +5,8 @@ import { colors } from '../theme';
 export type IconName =
   | 'back' | 'chevronRight' | 'chevronDown' | 'plus' | 'close' | 'check' | 'lock' | 'trash'
   | 'download' | 'folder' | 'move' | 'settings' | 'play' | 'image' | 'video' | 'fingerprint'
-  | 'shield' | 'backspace' | 'more' | 'edit' | 'offline' | 'timer' | 'key' | 'selectAll' | 'eyeOff';
+  | 'shield' | 'backspace' | 'more' | 'edit' | 'offline' | 'timer' | 'key' | 'selectAll' | 'eyeOff'
+  | 'rotate' | 'crop' | 'scissors' | 'pause';
 
 type Props = { name: IconName; size?: number; color?: string; strokeWidth?: number };
 
@@ -74,6 +75,15 @@ export function Icon({ name, size = 22, color = colors.text, strokeWidth = 1.9 }
           <Rect x={3.5} y={3.5} width={17} height={17} rx={3.5} {...stroke} />
           <Path d="M8 12.2l2.8 2.8L16 9.5" {...stroke} />
         </>);
+      case 'rotate': return <Path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5" {...stroke} />;
+      case 'crop': return <Path d="M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14" {...stroke} />;
+      case 'scissors':
+        return (<>
+          <Circle cx={6} cy={6} r={3} {...stroke} />
+          <Circle cx={6} cy={18} r={3} {...stroke} />
+          <Path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12" {...stroke} />
+        </>);
+      case 'pause': return <Path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" {...fill} />;
       case 'eyeOff': return <Path d="M3 3l18 18M10.6 5.1A9.8 9.8 0 0 1 12 5c5 0 8.5 4.3 9.5 7-.4 1-1.2 2.3-2.4 3.6M6.4 6.5C4.4 7.8 3 9.8 2.5 12c1 2.7 4.5 7 9.5 7 1.7 0 3.2-.5 4.5-1.2M9.9 9.9a3 3 0 0 0 4.2 4.2" {...stroke} />;
     }
   })();

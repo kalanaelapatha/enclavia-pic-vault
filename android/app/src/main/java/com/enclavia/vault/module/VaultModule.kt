@@ -12,6 +12,7 @@ import com.enclavia.vault.data.VaultDatabase
 import com.enclavia.vault.data.VaultItem
 import com.enclavia.vault.data.VaultPaths
 import com.enclavia.vault.media.Gallery
+import com.enclavia.vault.media.MediaEditor
 import com.enclavia.vault.media.MediaTransfer
 import com.enclavia.vault.specs.NativeVaultSpec
 import com.enclavia.vault.ui.VaultImageLoader
@@ -36,6 +37,7 @@ class VaultModule(private val context: ReactApplicationContext) : NativeVaultSpe
 
   private val keys = KeyManager.get(context)
   private val transfer = MediaTransfer(context)
+  private val editor = MediaEditor(context)
   private val db get() = VaultDatabase.get(context)
 
   /** Every write to the vault is serialised on this thread. */
@@ -340,6 +342,40 @@ class VaultModule(private val context: ReactApplicationContext) : NativeVaultSpe
       if (s.latestItemId != null) putString("latestItemId", s.latestItemId) else putNull("latestItemId")
     }
   }
+
+  // ================================================================ editing
+
+  private fun requireItem(id: String, dek: ByteArray): VaultItem =
+    db.getItems(listOf(id), dek).firstOrNull() ?: throw IllegalArgumentException("Item not found")
+
+  override fun getMediaInfo(id: String, promise: Promise) = runOn(worker, promise) {
+    val info = keys.withDek { dek -> editor.info(requireItem(id, dek), dek) }
+    Arguments.createMap().apply {
+      putInt("width", info.width)
+      putInt("height", info.height)
+      putDouble("durationMs", info.durationMs.toDouble())
+    }
+  }
+
+  override fun cropImage(
+    id: String, rotation: Double, x: Double, y: Double, width: Double, height: Double,
+    replace: Boolean, promise: Promise,
+  ) = runOn(io, promise) {
+    val item = keys.withDek { dek ->
+      editor.crop(requireItem(id, dek), rotation.toInt(), x, y, width, height, replace, dek)
+    }
+    VaultImageLoader.clear()
+    item.toMap()
+  }
+
+  override fun trimVideo(id: String, startMs: Double, endMs: Double, replace: Boolean, promise: Promise) =
+    runOn(io, promise) {
+      val item = keys.withDek { dek ->
+        editor.trim(requireItem(id, dek), startMs.toLong(), endMs.toLong(), replace, dek)
+      }
+      VaultImageLoader.clear()
+      item.toMap()
+    }
 
   override fun wipeVault(promise: Promise) = runOn(io, promise) {
     if (!keys.isUnlocked()) throw VaultLockedException()

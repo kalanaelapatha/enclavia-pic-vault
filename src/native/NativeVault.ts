@@ -86,6 +86,12 @@ export type VaultStats = {
   latestItemId: string | null;
 };
 
+export type MediaInfo = {
+  width: number;
+  height: number;
+  durationMs: number;
+};
+
 export interface Spec extends TurboModule {
   // Session & keys
   getSessionState(): Promise<SessionState>;
@@ -119,6 +125,24 @@ export interface Spec extends TurboModule {
   moveItems(ids: ReadonlyArray<string>, albumId: string | null): Promise<void>;
   deleteItems(ids: ReadonlyArray<string>): Promise<void>;
   getStats(): Promise<VaultStats>;
+
+  // Editing (results are re-encrypted; replace=false keeps the original)
+  getMediaInfo(id: string): Promise<MediaInfo>;
+  cropImage(
+    id: string,
+    rotation: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    replace: boolean,
+  ): Promise<VaultItem>;
+  trimVideo(
+    id: string,
+    startMs: number,
+    endMs: number,
+    replace: boolean,
+  ): Promise<VaultItem>;
   wipeVault(): Promise<void>;
 }
 

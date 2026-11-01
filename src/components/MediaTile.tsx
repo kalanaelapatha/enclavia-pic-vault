@@ -11,13 +11,14 @@ type Props = {
   galleryUri?: string;
   isVideo: boolean;
   durationMs: number;
+  version?: number;
   selected: boolean;
   selecting: boolean;
   onPress: () => void;
   onLongPress?: () => void;
 };
 
-function MediaTileImpl({ size, itemId, galleryUri, isVideo, durationMs, selected, selecting, onPress, onLongPress }: Props) {
+function MediaTileImpl({ size, itemId, galleryUri, isVideo, durationMs, version, selected, selecting, onPress, onLongPress }: Props) {
   return (
     <Pressable
       onPress={onPress}
@@ -31,6 +32,7 @@ function MediaTileImpl({ size, itemId, galleryUri, isVideo, durationMs, selected
         itemId={itemId ?? ''}
         galleryUri={galleryUri ?? ''}
         galleryIsVideo={isVideo}
+        version={version ?? 0}
         variant="thumb"
         resizeMode="cover"
       />

@@ -129,14 +129,14 @@ object Imaging {
     return sample
   }
 
-  private fun scaleDown(bmp: Bitmap, size: Int): Bitmap {
+  fun scaleDown(bmp: Bitmap, size: Int): Bitmap {
     val longest = max(bmp.width, bmp.height)
     if (longest <= size) return bmp
     val s = size.toFloat() / longest
     return Bitmap.createScaledBitmap(bmp, (bmp.width * s).toInt().coerceAtLeast(1), (bmp.height * s).toInt().coerceAtLeast(1), true)
   }
 
-  private fun rotate(bmp: Bitmap, orientation: Int): Bitmap {
+  fun rotate(bmp: Bitmap, orientation: Int): Bitmap {
     val m = Matrix()
     when (orientation) {
       ExifInterface.ORIENTATION_ROTATE_90 -> m.postRotate(90f)

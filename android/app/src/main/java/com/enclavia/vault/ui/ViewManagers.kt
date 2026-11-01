@@ -47,6 +47,16 @@ class VaultImageViewManager :
     view.variant = value ?: "thumb"
   }
 
+  @ReactProp(name = "frameTimeMs", defaultDouble = 0.0)
+  override fun setFrameTimeMs(view: VaultImageView, value: Double) {
+    view.frameTimeMs = value.toLong()
+  }
+
+  @ReactProp(name = "version", defaultDouble = 0.0)
+  override fun setVersion(view: VaultImageView, value: Double) {
+    view.version = value.toLong()
+  }
+
   @ReactProp(name = "resizeMode")
   override fun setResizeMode(view: VaultImageView, value: String?) {
     view.resizeMode = value ?: "cover"
@@ -97,6 +107,21 @@ class VaultVideoViewManager :
   @ReactProp(name = "paused")
   override fun setPaused(view: VaultVideoView, value: Boolean) {
     view.paused = value
+  }
+
+  @ReactProp(name = "clipStartMs", defaultDouble = -1.0)
+  override fun setClipStartMs(view: VaultVideoView, value: Double) {
+    view.clipStartMs = value.toLong()
+  }
+
+  @ReactProp(name = "clipEndMs", defaultDouble = -1.0)
+  override fun setClipEndMs(view: VaultVideoView, value: Double) {
+    view.clipEndMs = value.toLong()
+  }
+
+  @ReactProp(name = "repeat")
+  override fun setRepeat(view: VaultVideoView, value: Boolean) {
+    view.repeat = value
   }
 
   override fun onAfterUpdateTransaction(view: VaultVideoView) {

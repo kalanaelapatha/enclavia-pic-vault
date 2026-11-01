@@ -88,6 +88,7 @@ export function AlbumScreen({ navigation, route }: ScreenProps<'Album'>) {
           itemId={item.id}
           isVideo={item.type === 'video'}
           durationMs={item.durationMs}
+          version={item.importedAt}
           selected={selected.has(item.id)}
           selecting={selecting}
           onPress={() => (selecting ? toggle(item.id) : open(index))}

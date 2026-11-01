@@ -13,6 +13,8 @@ import { PlayerScreen } from '../screens/PlayerScreen';
 import { GalleryPickerScreen } from '../screens/GalleryPickerScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { ChangePinScreen } from '../screens/ChangePinScreen';
+import { CropScreen } from '../screens/CropScreen';
+import { TrimScreen } from '../screens/TrimScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -56,6 +58,8 @@ export function RootNavigator() {
             component={PlayerScreen}
             options={{ animation: 'fade', contentStyle: { backgroundColor: '#000' } }}
           />
+          <Stack.Screen name="Crop" component={CropScreen} options={{ animation: 'fade', contentStyle: { backgroundColor: '#000' } }} />
+          <Stack.Screen name="Trim" component={TrimScreen} options={{ animation: 'fade', contentStyle: { backgroundColor: '#000' } }} />
           <Stack.Screen name="GalleryPicker" component={GalleryPickerScreen} options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="ChangePin" component={ChangePinScreen} />

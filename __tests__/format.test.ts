@@ -1,7 +1,7 @@
 /**
  * @format
  */
-import { formatBytes, formatCountdown, formatDuration, plural, validatePin } from '../src/utils/format';
+import { formatBytes, formatClock, formatCountdown, formatDuration, plural, validatePin } from '../src/utils/format';
 
 describe('formatBytes', () => {
   it('formats sizes', () => {
@@ -25,6 +25,14 @@ describe('formatCountdown', () => {
     expect(formatCountdown(30_000, 0)).toBe('30s');
     expect(formatCountdown(125_000, 0)).toBe('2m 05s');
     expect(formatCountdown(0, 10)).toBe('0s');
+  });
+});
+
+describe('formatClock', () => {
+  it('shows tenths of a second', () => {
+    expect(formatClock(0)).toBe('0:00.0');
+    expect(formatClock(83_400)).toBe('1:23.4');
+    expect(formatClock(9_960)).toBe('0:10.0');
   });
 });
 

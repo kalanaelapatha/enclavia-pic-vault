@@ -33,6 +33,8 @@ class VaultImageView(private val reactContext: ThemedReactContext) : View(reactC
   var variant = "thumb"
   var resizeMode = "cover"
   var zoomable = false
+  var frameTimeMs = 0L
+  var version = 0L
 
   private var current: VaultImageLoader.Request? = null
   private var pending: Future<*>? = null
@@ -53,6 +55,7 @@ class VaultImageView(private val reactContext: ThemedReactContext) : View(reactC
 
   fun commitProps() {
     val full = variant == "full"
+    val frame = variant == "frame"
     val longSide = max(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
     val req = VaultImageLoader.Request(
       itemId = itemId,
@@ -60,6 +63,8 @@ class VaultImageView(private val reactContext: ThemedReactContext) : View(reactC
       galleryIsVideo = galleryIsVideo,
       full = full,
       maxSide = if (full) min((longSide * 1.5f).toInt(), 3072) else 0,
+      frameTimeMs = if (frame) frameTimeMs.coerceAtLeast(0) else -1,
+      version = version,
     )
     if (req == current && bitmap != null) {
       updateBaseMatrix()

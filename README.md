@@ -8,6 +8,11 @@ inside an encrypted, fully offline vault.
   (Android shows its own confirmation dialog).
 - Create, rename and delete albums, and move items between them.
 - Full-screen viewer with pinch-zoom and swipe. Videos play inside the app.
+- **Crop photos** inside the vault: free or fixed shapes (1:1, 4:3, 3:4, 16:9, 9:16) and rotate.
+  Save as a new copy or replace the original. GPS and other metadata are dropped.
+- **Cut videos** inside the vault: drag start and end handles over a frame strip, with a looping
+  preview. The cut is lossless (no re-encoding) and starts at the nearest keyframe. While cutting,
+  the unencrypted video exists only in RAM (Android 11+), never as a file.
 - Save a copy back to the gallery (`Pictures/Enclavia`, `Movies/Enclavia`). The vault copy is kept.
 - Opens with your PIN only (6–16 digits): no accounts, no Google sign-in, no fingerprint. Auto-lock, and lockout after wrong PINs.
 
@@ -31,7 +36,7 @@ See [SECURITY.md](SECURITY.md) for the threat model and cryptographic design.
 │          EncryptedFile: chunked AES-256-GCM, random-access streaming reader    │
 │ data/    VaultDatabase (SQLite, encrypted text columns), VaultPaths             │
 │ media/   Gallery (MediaStore paging), MediaTransfer (import/verify/export),     │
-│          Imaging (thumbnails, EXIF, decode)                                     │
+│          MediaEditor (crop, lossless cut), Imaging (thumbnails, EXIF, decode)   │
 │ ui/      VaultImageView: in-memory decrypt, LRU cache, pinch-zoom               │
 │ video/   VaultVideoView: Media3 ExoPlayer + decrypting DataSource               │
 └─────────────────────────────────────────────────────────────────────────────────┘

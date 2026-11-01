@@ -17,7 +17,7 @@ import { formatBytes, plural } from '../utils/format';
 type Tile = VaultAlbum | { id: '__new__' };
 
 export function HomeScreen({ navigation }: ScreenProps<'Home'>) {
-  const { bump } = useSession();
+  const { bump, revision } = useSession();
   const { data: albums } = useAlbums();
   const { data: stats } = useStats();
   const insets = useSafeAreaInsets();
@@ -104,7 +104,7 @@ export function HomeScreen({ navigation }: ScreenProps<'Home'>) {
         onPress={() => navigation.navigate('Album', { albumId: null, title: 'All items' })}
         style={({ pressed }) => [styles.allCard, pressed && styles.pressed]}>
         {stats?.latestItemId ? (
-          <VaultImageView style={StyleSheet.absoluteFill} itemId={stats.latestItemId} variant="thumb" resizeMode="cover" />
+          <VaultImageView style={StyleSheet.absoluteFill} itemId={stats.latestItemId} version={revision} variant="thumb" resizeMode="cover" />
         ) : null}
         <View style={styles.allShade} />
         <View style={styles.allText}>
@@ -159,6 +159,7 @@ export function HomeScreen({ navigation }: ScreenProps<'Home'>) {
             <AlbumTile
               album={item as VaultAlbum}
               size={tileW}
+              revision={revision}
               onPress={() => navigation.navigate('Album', { albumId: item.id, title: (item as VaultAlbum).name })}
               onLongPress={() => setMenuFor(item as VaultAlbum)}
             />
@@ -192,12 +193,12 @@ export function HomeScreen({ navigation }: ScreenProps<'Home'>) {
   );
 }
 
-function AlbumTile({ album, size, onPress, onLongPress }: { album: VaultAlbum; size: number; onPress: () => void; onLongPress: () => void }) {
+function AlbumTile({ album, size, revision, onPress, onLongPress }: { album: VaultAlbum; size: number; revision: number; onPress: () => void; onLongPress: () => void }) {
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [{ width: size }, pressed && styles.pressed]}>
       <View style={[styles.cover, { width: size, height: size }]}>
         {album.coverItemId ? (
-          <VaultImageView style={StyleSheet.absoluteFill} itemId={album.coverItemId} variant="thumb" resizeMode="cover" />
+          <VaultImageView style={StyleSheet.absoluteFill} itemId={album.coverItemId} version={revision} variant="thumb" resizeMode="cover" />
         ) : (
           <Icon name="folder" size={34} color={colors.textFaint} />
         )}

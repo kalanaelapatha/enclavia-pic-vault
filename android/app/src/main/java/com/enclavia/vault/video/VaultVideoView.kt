@@ -16,7 +16,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.enclavia.vault.crypto.EncryptedFile
 import com.enclavia.vault.crypto.KeyManager
@@ -87,8 +87,11 @@ class VaultVideoView(private val reactContext: ThemedReactContext) : FrameLayout
 
   var itemId = ""
   var paused = false
+  var clipStartMs = -1L
+  var clipEndMs = -1L
+  var repeat = false
 
-  private var loadedId = ""
+  private var loadedKey = ""
   private var player: ExoPlayer? = null
   private val keys = KeyManager.get(reactContext)
   private val onLock: () -> Unit = { post { releasePlayer() } }
@@ -109,21 +112,30 @@ class VaultVideoView(private val reactContext: ThemedReactContext) : FrameLayout
     addView(playerView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
   }
 
+  private fun sourceKey() = "$itemId:$clipStartMs:$clipEndMs"
+
   fun commitProps() {
-    if (itemId != loadedId) preparePlayer()
+    if (sourceKey() != loadedKey) preparePlayer()
     player?.playWhenReady = !paused
+    player?.repeatMode = if (repeat) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
   }
 
   private fun preparePlayer() {
     releasePlayer()
-    loadedId = itemId
+    loadedKey = sourceKey()
     if (itemId.isEmpty() || !isAttachedToWindow) return
     val appContext = context.applicationContext
     val factory = DataSource.Factory { EncryptedDataSource(appContext) }
-    val source = ProgressiveMediaSource.Factory(factory)
-      .createMediaSource(MediaItem.fromUri(Uri.parse("vault://item/$itemId")))
+    val clipping = MediaItem.ClippingConfiguration.Builder().apply {
+      if (clipStartMs > 0) setStartPositionMs(clipStartMs)
+      if (clipEndMs > 0) setEndPositionMs(clipEndMs)
+    }.build()
+    val mediaItem = MediaItem.Builder()
+      .setUri(Uri.parse("vault://item/$itemId"))
+      .setClippingConfiguration(clipping)
+      .build()
     val p = ExoPlayer.Builder(context)
-      .setMediaSourceFactory(ProgressiveMediaSource.Factory(factory))
+      .setMediaSourceFactory(DefaultMediaSourceFactory(factory))
       .setAudioAttributes(AudioAttributes.DEFAULT, true)
       .setHandleAudioBecomingNoisy(true)
       .build()
@@ -136,7 +148,8 @@ class VaultVideoView(private val reactContext: ThemedReactContext) : FrameLayout
         )
       }
     })
-    p.setMediaSource(source)
+    p.setMediaItem(mediaItem)
+    p.repeatMode = if (repeat) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
     p.prepare()
     p.playWhenReady = !paused
     playerView.player = p
@@ -147,7 +160,7 @@ class VaultVideoView(private val reactContext: ThemedReactContext) : FrameLayout
     playerView.player = null
     player?.release()
     player = null
-    loadedId = ""
+    loadedKey = ""
   }
 
   override fun onAttachedToWindow() {
