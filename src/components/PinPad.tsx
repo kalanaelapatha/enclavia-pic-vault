@@ -11,7 +11,6 @@ type Props = {
   minLength: number;
   disabled?: boolean;
   errorKey?: number; // bump to shake the dots
-  leftKey?: { icon: 'fingerprint'; onPress: () => void; label: string } | null;
 };
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
@@ -20,7 +19,7 @@ const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
  * Custom keypad: the system keyboard is never used for the PIN, so keyboard apps
  * can't log or "learn" it.
  */
-export function PinPad({ value, onChange, onSubmit, maxLength, minLength, disabled, errorKey, leftKey }: Props) {
+export function PinPad({ value, onChange, onSubmit, maxLength, minLength, disabled, errorKey }: Props) {
   const shake = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -56,8 +55,6 @@ export function PinPad({ value, onChange, onSubmit, maxLength, minLength, disabl
         ))}
         {value.length > 0 ? (
           <Key icon="backspace" label="Delete" onPress={back} onLongPress={() => !disabled && onChange('')} disabled={disabled} subtle />
-        ) : leftKey ? (
-          <Key icon="fingerprint" label={leftKey.label} onPress={leftKey.onPress} disabled={disabled} subtle />
         ) : (
           <View style={[styles.key, styles.keySubtle]} />
         )}
@@ -70,7 +67,7 @@ export function PinPad({ value, onChange, onSubmit, maxLength, minLength, disabl
 
 type KeyProps = {
   label: string;
-  icon?: 'backspace' | 'check' | 'fingerprint';
+  icon?: 'backspace' | 'check';
   onPress: () => void;
   onLongPress?: () => void;
   disabled?: boolean;

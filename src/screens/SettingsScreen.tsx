@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, ToastAndroid, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Header, IconButton } from '../components/Header';
 import { Icon, IconName } from '../components/Icon';
@@ -25,6 +25,7 @@ const PROTECTIONS: { icon: IconName; title: string; body: string }[] = [
   { icon: 'shield', title: 'AES-256-GCM encryption', body: 'Every file, thumbnail and name is encrypted. Keys are bound to your PIN and this phone’s secure hardware.' },
   { icon: 'eyeOff', title: 'Screen protection', body: 'Screenshots, screen recording and the recent-apps preview are blocked.' },
   { icon: 'lock', title: 'No backups', body: 'Vault data is excluded from cloud and device-to-device backups.' },
+  { icon: 'key', title: 'PIN only', body: 'No accounts, no sign-in, no fingerprint. Only your PIN opens the vault.' },
 ];
 
 export function SettingsScreen({ navigation }: ScreenProps<'Settings'>) {
@@ -33,29 +34,9 @@ export function SettingsScreen({ navigation }: ScreenProps<'Settings'>) {
   const insets = useSafeAreaInsets();
   const [autoLockOpen, setAutoLockOpen] = useState(false);
   const [wipeOpen, setWipeOpen] = useState(false);
-  const [bioBusy, setBioBusy] = useState(false);
 
   const autoLockMs = state?.autoLockMs ?? 0;
   const autoLockLabel = AUTO_LOCK.find(a => a.ms === autoLockMs)?.label ?? 'Immediately';
-
-  const toggleBiometric = async (enable: boolean) => {
-    setBioBusy(true);
-    try {
-      if (enable) {
-        const ok = await Vault.enableBiometric('Enable biometric unlock', 'Cancel');
-        if (ok) {
-          ToastAndroid.show('Biometric unlock enabled', ToastAndroid.SHORT);
-        }
-      } else {
-        await Vault.disableBiometric();
-      }
-    } catch (e) {
-      Alert.alert('Biometrics unavailable', errorMessage(e));
-    } finally {
-      await refresh();
-      setBioBusy(false);
-    }
-  };
 
   const setAutoLock = async (ms: number) => {
     Vault.setAutoLockMs(ms);
@@ -67,24 +48,6 @@ export function SettingsScreen({ navigation }: ScreenProps<'Settings'>) {
       <Header title="Settings" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.xxl }]}>
         <Section title="Security">
-          {state?.biometricAvailable ? (
-            <Row
-              icon="fingerprint"
-              title="Biometric unlock"
-              subtitle="Fingerprint or face, backed by a hardware key"
-              right={
-                <Switch
-                  value={!!state?.biometricEnabled}
-                  disabled={bioBusy}
-                  onValueChange={toggleBiometric}
-                  trackColor={{ true: colors.accent, false: colors.surfaceHigh }}
-                  thumbColor="#fff"
-                />
-              }
-            />
-          ) : (
-            <Row icon="fingerprint" title="Biometric unlock" subtitle="Set up a strong fingerprint or face unlock in Android settings first" />
-          )}
           <Row icon="timer" title="Auto-lock" subtitle={autoLockLabel} onPress={() => setAutoLockOpen(true)} chevron />
           <Row icon="key" title="Change PIN" onPress={() => navigation.navigate('ChangePin')} chevron />
           <Row icon="lock" title="Lock now" onPress={() => Vault.lock()} />

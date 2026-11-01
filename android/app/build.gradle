@@ -154,8 +154,6 @@ dependencies {
     // Encrypted video playback (local only; we supply our own decrypting DataSource)
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
-    // Fingerprint / face unlock bound to a Keystore key
-    implementation("androidx.biometric:biometric:1.1.0")
     // EXIF orientation for older Android versions
     implementation("androidx.exifinterface:exifinterface:1.4.2")
 

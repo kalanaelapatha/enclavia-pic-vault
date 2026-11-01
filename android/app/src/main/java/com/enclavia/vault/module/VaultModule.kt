@@ -5,10 +5,6 @@ import android.content.Intent
 import android.os.Build
 import android.os.StatFs
 import android.provider.MediaStore
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import com.enclavia.vault.crypto.KeyManager
 import com.enclavia.vault.crypto.VaultLockedException
 import com.enclavia.vault.data.VaultAlbum
@@ -27,8 +23,6 @@ import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.bridge.WritableMap
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
-import javax.crypto.Cipher
 
 class VaultModule(private val context: ReactApplicationContext) : NativeVaultSpec(context) {
 
@@ -109,8 +103,6 @@ class VaultModule(private val context: ReactApplicationContext) : NativeVaultSpe
     Arguments.createMap().apply {
       putBoolean("setup", keys.isSetup())
       putBoolean("unlocked", keys.isUnlocked())
-      putBoolean("biometricEnabled", keys.isBiometricEnabled())
-      putBoolean("biometricAvailable", keys.isBiometricAvailable())
       putInt("failedAttempts", keys.failedAttempts())
       putDouble("lockoutUntil", keys.lockoutUntil().toDouble())
       putDouble("autoLockMs", keys.autoLockMs().toDouble())
@@ -141,78 +133,6 @@ class VaultModule(private val context: ReactApplicationContext) : NativeVaultSpe
   override fun lock() = keys.lock()
 
   override fun setAutoLockMs(ms: Double) = keys.setAutoLockMs(ms.toLong())
-
-  override fun unlockWithBiometric(title: String, cancelLabel: String, promise: Promise) {
-    worker.execute {
-      val cipher = try {
-        keys.createBiometricUnlockCipher()
-      } catch (e: Throwable) {
-        null
-      }
-      if (cipher == null) {
-        promise.resolve(false)
-        return@execute
-      }
-      showBiometricPrompt(title, cancelLabel, cipher, promise) { authorised -> keys.completeBiometricUnlock(authorised) }
-    }
-  }
-
-  override fun enableBiometric(title: String, cancelLabel: String, promise: Promise) {
-    worker.execute {
-      val cipher = try {
-        keys.createBiometricEnrollCipher()
-      } catch (e: Throwable) {
-        promise.reject("E_BIOMETRIC", e.message ?: "Biometric unavailable")
-        return@execute
-      }
-      showBiometricPrompt(title, cancelLabel, cipher, promise) { authorised -> keys.completeBiometricEnroll(authorised) }
-    }
-  }
-
-  override fun disableBiometric(promise: Promise) = runOn(worker, promise) {
-    keys.disableBiometric()
-    null
-  }
-
-  private fun showBiometricPrompt(
-    title: String,
-    cancelLabel: String,
-    cipher: Cipher,
-    promise: Promise,
-    onAuthorised: (Cipher) -> Unit,
-  ) {
-    val settled = AtomicBoolean(false)
-    fun settle(value: Boolean) {
-      if (settled.compareAndSet(false, true)) promise.resolve(value)
-    }
-    UiThreadUtil.runOnUiThread {
-      val activity = getCurrentActivity() as? FragmentActivity
-      if (activity == null) {
-        settle(false)
-        return@runOnUiThread
-      }
-      val prompt = BiometricPrompt(activity, ContextCompat.getMainExecutor(activity),
-        object : BiometricPrompt.AuthenticationCallback() {
-          override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-            val authorised = result.cryptoObject?.cipher
-            if (authorised == null) {
-              settle(false)
-              return
-            }
-            worker.execute { settle(runCatching { onAuthorised(authorised) }.isSuccess) }
-          }
-
-          override fun onAuthenticationError(errorCode: Int, errString: CharSequence) = settle(false)
-        })
-      val info = BiometricPrompt.PromptInfo.Builder()
-        .setTitle(title)
-        .setNegativeButtonText(cancelLabel)
-        .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-        .setConfirmationRequired(false)
-        .build()
-      prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))
-    }
-  }
 
   // ================================================================ gallery
 

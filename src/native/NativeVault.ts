@@ -4,8 +4,6 @@ import type { TurboModule } from 'react-native';
 export type SessionState = {
   setup: boolean;
   unlocked: boolean;
-  biometricEnabled: boolean;
-  biometricAvailable: boolean;
   failedAttempts: number;
   lockoutUntil: number;
   autoLockMs: number;
@@ -93,9 +91,6 @@ export interface Spec extends TurboModule {
   getSessionState(): Promise<SessionState>;
   setupPin(pin: string): Promise<void>;
   unlockWithPin(pin: string): Promise<UnlockResult>;
-  unlockWithBiometric(title: string, cancelLabel: string): Promise<boolean>;
-  enableBiometric(title: string, cancelLabel: string): Promise<boolean>;
-  disableBiometric(): Promise<void>;
   changePin(oldPin: string, newPin: string): Promise<boolean>;
   lock(): void;
   setAutoLockMs(ms: number): void;

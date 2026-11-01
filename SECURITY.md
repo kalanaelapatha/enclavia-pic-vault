@@ -34,8 +34,6 @@ DEK  = 32 random bytes (SecureRandom), held only in RAM while unlocked
 
 PIN wrap   = KeystoreAES-GCM[ device KEK, StrongBox if available ](
                AES-256-GCM[ PBKDF2-HMAC-SHA256(PIN, salt16, ~350ms, ≥120k iters) ](DEK) )
-Bio wrap   = KeystoreAES-GCM[ bio KEK: user-auth required, BIOMETRIC_STRONG,
-                              invalidated on new enrollment ](DEK)
 
 fileKey    = HMAC-SHA256(DEK, "enclavia-file-v1" ‖ salt16)        (one per file)
 fieldKey   = HMAC-SHA256(DEK, "enclavia-file-v1" ‖ "field")       (DB text columns)
@@ -64,18 +62,17 @@ content.
 - **Lockout:** 5 free attempts, then 30 s doubling up to 1 h (`KeyManager.unlockWithPin`).
 - **Offline brute force:** the PIN-wrapped key is also wrapped by a non-exportable Keystore key.
   Guessing therefore has to run on the device itself, at PBKDF2 cost per guess.
-- **Biometric:** uses a `CryptoObject`, so a successful prompt actually decrypts the DEK; it isn't
-  a yes/no check that could be bypassed. Enrolling a new fingerprint or face invalidates the key,
-  and the PIN is then required.
+- **PIN only:** no accounts, no Google/Gmail sign-in, no fingerprint or face unlock. The PIN is the
+  only way to derive the key. Release builds strip the biometric permissions.
 
 ## Runtime protections
 
-- `FLAG_SECURE` blocks screenshots, screen recording, casting and the recent-apps thumbnail.
+- `FLAG_SECURE` blocks screenshots (only a QA build made with `-Penclavia.qa=true` turns it off), screen recording, casting and the recent-apps thumbnail.
 - `filterTouchesWhenObscured` drops touches while another app's window covers ours (tapjacking).
 - **Auto-lock** runs on `onStop`: immediately by default, or after 30 s, 1 min or 5 min. Locking
   wipes the DEK, clears every decoded-bitmap cache, stops video playback, and unmounts every vault
   screen (auth-gated navigator).
-- System dialogs (permission, delete confirmation, biometric) only trigger `onPause`, so they don't
+- System dialogs (permission, delete confirmation) only trigger `onPause`, so they don't
   lock the vault.
 - Every TurboModule operation takes a private copy of the DEK and wipes it afterwards. A concurrent
   lock can never corrupt an in-progress write.

@@ -8,4 +8,7 @@
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" tools:node="remove" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" tools:node="remove" />
     <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove" />
+    <!-- PIN is the only way in: no fingerprint/face unlock. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" tools:node="remove" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" tools:node="remove" />
 </manifest>

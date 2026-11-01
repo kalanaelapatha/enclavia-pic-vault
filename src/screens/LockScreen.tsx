@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text } from 'react-native';
 import { PinLayout } from '../components/PinLayout';
 import { PinPad } from '../components/PinPad';
@@ -19,7 +19,6 @@ export function LockScreen() {
   const [shake, setShake] = useState(0);
   const [lockoutUntil, setLockoutUntil] = useState(state?.lockoutUntil ?? 0);
   const [now, setNow] = useState(Date.now());
-  const autoPrompted = useRef(false);
 
   const lockedOut = lockoutUntil > now;
 
@@ -30,25 +29,6 @@ export function LockScreen() {
     const t = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(t);
   }, [lockedOut]);
-
-  const biometric = useCallback(async () => {
-    const ok = await Vault.unlockWithBiometric('Unlock Enclavia', 'Use PIN').catch(() => false);
-    if (ok) {
-      await refresh();
-    } else {
-      const s = await refresh();
-      if (s && !s.biometricEnabled && state?.biometricEnabled) {
-        setError('Biometrics changed on this phone. Use your PIN, then re-enable in Settings.');
-      }
-    }
-  }, [refresh, state?.biometricEnabled]);
-
-  useEffect(() => {
-    if (state?.biometricEnabled && !autoPrompted.current && !lockedOut) {
-      autoPrompted.current = true;
-      biometric();
-    }
-  }, [state?.biometricEnabled, biometric, lockedOut]);
 
   const submit = async () => {
     if (busy || lockedOut) {
@@ -105,7 +85,6 @@ export function LockScreen() {
         maxLength={max}
         disabled={busy || lockedOut}
         errorKey={shake}
-        leftKey={state?.biometricEnabled ? { icon: 'fingerprint', label: 'Use biometrics', onPress: biometric } : null}
       />
     </PinLayout>
   );

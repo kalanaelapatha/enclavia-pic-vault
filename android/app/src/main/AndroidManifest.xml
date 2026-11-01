@@ -17,7 +17,6 @@
     <!-- Android 8-10: delete originals / export copies -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"
         tools:ignore="ScopedStorage" />
-    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <application
       android:name=".MainApplication"

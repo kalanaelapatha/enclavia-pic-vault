@@ -9,7 +9,7 @@ inside an encrypted, fully offline vault.
 - Create, rename and delete albums, and move items between them.
 - Full-screen viewer with pinch-zoom and swipe. Videos play inside the app.
 - Save a copy back to the gallery (`Pictures/Enclavia`, `Movies/Enclavia`). The vault copy is kept.
-- PIN lock (6–16 digits), optional fingerprint/face unlock, auto-lock, and lockout after wrong PINs.
+- Opens with your PIN only (6–16 digits): no accounts, no Google sign-in, no fingerprint. Auto-lock, and lockout after wrong PINs.
 
 See [SECURITY.md](SECURITY.md) for the threat model and cryptographic design.
 
@@ -26,7 +26,7 @@ See [SECURITY.md](SECURITY.md) for the threat model and cryptographic design.
 └───────────────▲───────────────────────────────▲───────────────────────────┘
                 │ JSI / TurboModule             │ Fabric views
 ┌───────────────┴───────── Kotlin (android/app/src/main/java/com/enclavia/vault)─┐
-│ module/  VaultModule: async API, executors, events, biometric prompt, delete    │
+│ module/  VaultModule: async API, executors, events, gallery delete requests     │
 │ crypto/  KeyManager: DEK, PIN/PBKDF2, Android Keystore, lockout, auto-lock      │
 │          EncryptedFile: chunked AES-256-GCM, random-access streaming reader    │
 │ data/    VaultDatabase (SQLite, encrypted text columns), VaultPaths             │
@@ -78,6 +78,9 @@ Output in `android/app/build/outputs/apk/release/`:
 | `app-arm64-v8a-release.apk` | Modern phones (2017+); smallest |
 | `app-armeabi-v7a-release.apk` | Older 32-bit phones |
 | `app-x86_64-release.apk` / `app-x86-release.apk` | Emulators / Chromebooks |
+
+For testing only, `./gradlew assembleRelease -Penclavia.qa=true` builds a variant that allows
+screenshots. Never distribute that build.
 
 Release builds are signed with `android/enclavia-release.keystore`. Its passwords are in
 `android/keystore.properties`. Both files are git-ignored. **Back them up somewhere safe.**

@@ -7,10 +7,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import androidx.biometric.BiometricManager
 import java.security.KeyStore
 import java.security.SecureRandom
 import java.util.concurrent.CopyOnWriteArraySet
@@ -30,9 +28,8 @@ class VaultLockedException : IllegalStateException("Vault is locked")
  *
  * Key hierarchy:
  *   DEK (random 256-bit, only ever in RAM while unlocked)
- *    ├─ PIN wrap:        Keystore_AES( AES-GCM( PBKDF2(PIN, salt), DEK ) )
+ *    └─ PIN wrap:        Keystore_AES( AES-GCM( PBKDF2(PIN, salt), DEK ) )
  *    │                   -> PIN guessing must happen on this device (hardware-bound key)
- *    └─ Biometric wrap:  Keystore_AES[user-auth-required, invalidated on new enrollment]( DEK )
  *
  * Wrong PIN attempts are rate limited with an exponential lockout.
  */
@@ -48,10 +45,8 @@ class KeyManager private constructor(context: Context) {
     private const val MAX_LOCKOUT_MS = 60L * 60_000L
 
     private const val DEVICE_ALIAS = "enclavia_device_kek_v1"
-    private const val BIO_ALIAS = "enclavia_bio_kek_v1"
     private const val PREFS = "enclavia_keys"
     private const val K_DEK_PIN = "dek_pin"
-    private const val K_DEK_BIO = "dek_bio"
     private const val K_SALT = "pin_salt"
     private const val K_ITER = "pin_iter"
     private const val K_FAILS = "fail_count"
@@ -85,12 +80,6 @@ class KeyManager private constructor(context: Context) {
   fun failedAttempts(): Int = prefs.getInt(K_FAILS, 0)
 
   fun lockoutUntil(): Long = prefs.getLong(K_LOCKOUT, 0L)
-
-  fun isBiometricEnabled(): Boolean = prefs.contains(K_DEK_BIO)
-
-  fun isBiometricAvailable(): Boolean =
-    BiometricManager.from(appContext).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
-      BiometricManager.BIOMETRIC_SUCCESS
 
   /**
    * Runs [block] with a private copy of the DEK, so a concurrent lock() can never
@@ -212,53 +201,6 @@ class KeyManager private constructor(context: Context) {
     }
   }
 
-  // ---------------------------------------------------------------- biometric
-
-  /** Cipher to authorise with BiometricPrompt when enabling biometric unlock. */
-  fun createBiometricEnrollCipher(): Cipher {
-    if (!isUnlocked()) throw VaultLockedException()
-    deleteKey(BIO_ALIAS)
-    val key = generateKey(BIO_ALIAS, requireBiometric = true)
-    return Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key) }
-  }
-
-  fun completeBiometricEnroll(authorisedCipher: Cipher) {
-    withDek { key ->
-      val ct = authorisedCipher.doFinal(key)
-      prefs.edit().putString(K_DEK_BIO, b64(authorisedCipher.iv + ct)).commit()
-    }
-  }
-
-  /** Cipher to authorise with BiometricPrompt for unlocking, or null if biometric is unusable. */
-  fun createBiometricUnlockCipher(): Cipher? {
-    val blob = prefs.getString(K_DEK_BIO, null)?.let { unb64(it) } ?: return null
-    return try {
-      val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-      val key = ks.getKey(BIO_ALIAS, null) as? SecretKey ?: run { disableBiometric(); return null }
-      Cipher.getInstance("AES/GCM/NoPadding").apply {
-        init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, blob, 0, 12))
-      }
-    } catch (e: KeyPermanentlyInvalidatedException) {
-      // A new fingerprint/face was enrolled: the biometric key is gone by design.
-      disableBiometric()
-      null
-    }
-  }
-
-  @Synchronized
-  fun completeBiometricUnlock(authorisedCipher: Cipher) {
-    val blob = unb64(prefs.getString(K_DEK_BIO, null) ?: throw IllegalStateException("Biometric disabled"))
-    val opened = authorisedCipher.doFinal(blob, 12, blob.size - 12)
-    dek?.fill(0)
-    dek = opened
-    prefs.edit().putInt(K_FAILS, 0).putLong(K_LOCKOUT, 0L).commit()
-  }
-
-  fun disableBiometric() {
-    prefs.edit().remove(K_DEK_BIO).commit()
-    deleteKey(BIO_ALIAS)
-  }
-
   // ---------------------------------------------------------------- lock / auto-lock
 
   fun lock() {
@@ -293,7 +235,6 @@ class KeyManager private constructor(context: Context) {
     lock()
     prefs.edit().clear().commit()
     deleteKey(DEVICE_ALIAS)
-    deleteKey(BIO_ALIAS)
   }
 
   // ---------------------------------------------------------------- primitives
@@ -301,10 +242,10 @@ class KeyManager private constructor(context: Context) {
   private fun deviceKey(): SecretKey {
     val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
     (ks.getKey(DEVICE_ALIAS, null) as? SecretKey)?.let { return it }
-    return generateKey(DEVICE_ALIAS, requireBiometric = false)
+    return generateKey(DEVICE_ALIAS)
   }
 
-  private fun generateKey(alias: String, requireBiometric: Boolean): SecretKey {
+  private fun generateKey(alias: String): SecretKey {
     fun spec(strongBox: Boolean): KeyGenParameterSpec =
       KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
         .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
@@ -313,20 +254,13 @@ class KeyManager private constructor(context: Context) {
         .setRandomizedEncryptionRequired(true)
         .apply {
           if (strongBox && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) setIsStrongBoxBacked(true)
-          if (requireBiometric) {
-            setUserAuthenticationRequired(true)
-            setInvalidatedByBiometricEnrollment(true)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-              setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
-            }
-          }
         }
         .build()
 
     val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
     val hasStrongBox = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
       appContext.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)
-    if (hasStrongBox && !requireBiometric) {
+    if (hasStrongBox) {
       try {
         generator.init(spec(strongBox = true))
         val key = generator.generateKey()

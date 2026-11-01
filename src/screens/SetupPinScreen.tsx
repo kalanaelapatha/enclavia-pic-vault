@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../components/Button';
 import { Icon, IconName } from '../components/Icon';
@@ -83,22 +83,6 @@ export function SetupPinScreen() {
     setBusy(true);
     try {
       await Vault.setupPin(pin);
-      const s = await Vault.getSessionState();
-      if (s.biometricAvailable) {
-        await new Promise<void>(resolve =>
-          Alert.alert('Unlock with fingerprint or face?', 'You can always use your PIN instead. You can change this later in Settings.', [
-            { text: 'Not now', style: 'cancel', onPress: () => resolve() },
-            {
-              text: 'Enable',
-              onPress: () => {
-                Vault.enableBiometric('Enable biometric unlock', 'Cancel')
-                  .catch(() => false)
-                  .finally(() => resolve());
-              },
-            },
-          ]),
-        );
-      }
       await refresh();
     } catch (e) {
       setBusy(false);
