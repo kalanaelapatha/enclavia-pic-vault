@@ -143,6 +143,17 @@ export interface Spec extends TurboModule {
     endMs: number,
     replace: boolean,
   ): Promise<VaultItem>;
+  /** Rotates/crops the video frame; re-encodes on the device. Progress: EnclaviaEditProgress. */
+  cropVideo(
+    id: string,
+    rotation: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    replace: boolean,
+  ): Promise<VaultItem>;
+  cancelEdit(): void;
   wipeVault(): Promise<void>;
 }
 

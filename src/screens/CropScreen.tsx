@@ -16,10 +16,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/Header';
 import { Icon } from '../components/Icon';
+import { ProgressModal } from '../components/ProgressModal';
 import { Sheet } from '../components/Sheet';
 import VaultImageView from '../native/VaultImageViewNativeComponent';
 import type { ScreenProps } from '../navigation/types';
-import { errorMessage, Vault } from '../services/vault';
+import { errorMessage, isCancelled, Vault, VaultEvents } from '../services/vault';
 import { useSession } from '../state/SessionContext';
 import { colors, radius, space } from '../theme';
 import { Corner, fitAspect, moveRect, normalise, Rect, resizeRect, rotatedSize, Size } from '../utils/crop';
@@ -37,10 +38,12 @@ const HANDLE = 48; // touch area
 const DOT = 22;
 
 export function CropScreen({ navigation, route }: ScreenProps<'Crop'>) {
-  const { itemId, version } = route.params;
+  const { itemId, version, isVideo = false } = route.params;
   const { bump } = useSession();
   const insets = useSafeAreaInsets();
   const [photo, setPhoto] = useState<Size | null>(null);
+  const [posterMs, setPosterMs] = useState(0);
+  const [progress, setProgress] = useState<number | null>(null);
   const [area, setArea] = useState<Size | null>(null);
   const [rotation, setRotation] = useState(0);
   const [aspect, setAspect] = useState<number | null>(null);
@@ -50,12 +53,24 @@ export function CropScreen({ navigation, route }: ScreenProps<'Crop'>) {
 
   useEffect(() => {
     Vault.getMediaInfo(itemId)
-      .then(i => setPhoto({ w: i.width, h: i.height }))
+      .then(i => {
+        // A still from a third of the way in is usually more representative than the first frame.
+        setPosterMs(Math.round(i.durationMs / 3));
+        setPhoto({ w: i.width, h: i.height });
+      })
       .catch(e => {
-        Alert.alert('Cannot edit this photo', errorMessage(e));
+        Alert.alert(isVideo ? 'Cannot edit this video' : 'Cannot edit this photo', errorMessage(e));
         navigation.goBack();
       });
-  }, [itemId, navigation]);
+  }, [itemId, isVideo, navigation]);
+
+  useEffect(() => {
+    if (!isVideo) {
+      return;
+    }
+    const sub = VaultEvents.onEditProgress(p => setProgress(p.done));
+    return () => sub.remove();
+  }, [isVideo]);
 
   // Where the (rotated) photo sits on screen.
   const display = useMemo(() => {
@@ -125,13 +140,22 @@ export function CropScreen({ navigation, route }: ScreenProps<'Crop'>) {
     setSaving(true);
     const n = normalise(rect, bounds);
     try {
-      await Vault.cropImage(itemId, rotation, n.x, n.y, n.w, n.h, replace);
+      if (isVideo) {
+        setProgress(0);
+        await Vault.cropVideo(itemId, rotation, n.x, n.y, n.w, n.h, replace);
+      } else {
+        await Vault.cropImage(itemId, rotation, n.x, n.y, n.w, n.h, replace);
+      }
       bump();
-      ToastAndroid.show(replace ? 'Photo updated' : 'Saved as a new photo', ToastAndroid.SHORT);
+      const what = isVideo ? 'video' : 'photo';
+      ToastAndroid.show(replace ? `${isVideo ? 'Video' : 'Photo'} updated` : `Saved as a new ${what}`, ToastAndroid.SHORT);
       navigation.goBack();
     } catch (e) {
       setSaving(false);
-      Alert.alert('Could not save', errorMessage(e));
+      setProgress(null);
+      if (!isCancelled(e)) {
+        Alert.alert('Could not save', errorMessage(e));
+      }
     }
   };
 
@@ -148,7 +172,7 @@ export function CropScreen({ navigation, route }: ScreenProps<'Crop'>) {
       <StatusBar hidden />
       <View style={[styles.top, { paddingTop: insets.top + space.xs }]}>
         <IconButton icon="close" label="Cancel" onPress={() => navigation.goBack()} />
-        <Text style={styles.title}>Crop</Text>
+        <Text style={styles.title}>{isVideo ? 'Crop video' : 'Crop'}</Text>
         <Pressable
           onPress={() => {
             setRotation(0);
@@ -174,7 +198,18 @@ export function CropScreen({ navigation, route }: ScreenProps<'Crop'>) {
                 top: (display.h - raw.h) / 2,
                 transform: [{ rotate: `${rotation}deg` }],
               }}>
-              <VaultImageView style={StyleSheet.absoluteFill} itemId={itemId} version={version} variant="full" resizeMode="contain" />
+              {isVideo ? (
+                <VaultImageView
+                  style={StyleSheet.absoluteFill}
+                  itemId={itemId}
+                  version={version}
+                  variant="poster"
+                  frameTimeMs={posterMs}
+                  resizeMode="contain"
+                />
+              ) : (
+                <VaultImageView style={StyleSheet.absoluteFill} itemId={itemId} version={version} variant="full" resizeMode="contain" />
+              )}
             </View>
 
             {/* Dim everything outside the crop box. */}
@@ -230,12 +265,29 @@ export function CropScreen({ navigation, route }: ScreenProps<'Crop'>) {
 
       <Sheet
         visible={choose}
-        title="Save cropped photo"
+        title={isVideo ? 'Save cropped video' : 'Save cropped photo'}
         onClose={() => setChoose(false)}
         options={[
-          { key: 'copy', label: 'Save as new copy', hint: 'Keeps the original photo', icon: 'plus', onPress: () => save(false) },
-          { key: 'replace', label: 'Replace original', hint: 'The uncropped photo is erased', icon: 'edit', danger: true, onPress: () => save(true) },
+          { key: 'copy', label: 'Save as new copy', hint: `Keeps the original ${isVideo ? 'video' : 'photo'}`, icon: 'plus', onPress: () => save(false) },
+          {
+            key: 'replace',
+            label: 'Replace original',
+            hint: `The uncropped ${isVideo ? 'video' : 'photo'} is erased`,
+            icon: 'edit',
+            danger: true,
+            onPress: () => save(true),
+          },
         ]}
+      />
+
+      <ProgressModal
+        visible={progress !== null}
+        title="Cropping video"
+        done={progress ?? 0}
+        total={100}
+        caption={`${progress ?? 0}%`}
+        note="The video is re-encoded on your phone. Keep the app open until it finishes."
+        onCancel={() => Vault.cancelEdit()}
       />
     </View>
   );

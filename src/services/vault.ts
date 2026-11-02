@@ -27,7 +27,15 @@ export const VaultEvents = {
   onExportProgress(listener: (p: Progress) => void) {
     return DeviceEventEmitter.addListener('EnclaviaExportProgress', listener);
   },
+  /** done/total is a percentage (0..100). */
+  onEditProgress(listener: (p: Progress) => void) {
+    return DeviceEventEmitter.addListener('EnclaviaEditProgress', listener);
+  },
 };
+
+export function isCancelled(e: unknown): boolean {
+  return !!e && typeof e === 'object' && 'code' in e && (e as { code: unknown }).code === 'E_CANCELLED';
+}
 
 export function errorMessage(e: unknown): string {
   if (e && typeof e === 'object' && 'message' in e) {

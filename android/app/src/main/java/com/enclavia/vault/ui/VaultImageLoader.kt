@@ -29,12 +29,12 @@ object VaultImageLoader {
     val galleryIsVideo: Boolean,
     val full: Boolean,
     val maxSide: Int,
-    /** >= 0: a frame of a vault video at this position. */
+    /** >= 0: a frame of a vault video at this position (large when [full], a strip frame otherwise). */
     val frameTimeMs: Long = -1,
     val version: Long = 0,
   ) {
     val key: String = when {
-      itemId.isNotEmpty() && frameTimeMs >= 0 -> "v:$itemId:$frameTimeMs:$version"
+      itemId.isNotEmpty() && frameTimeMs >= 0 -> "v:$itemId:$frameTimeMs:$maxSide:$version"
       itemId.isNotEmpty() && full -> "f:$itemId:$maxSide:$version"
       itemId.isNotEmpty() -> "t:$itemId:$version"
       else -> "g:$galleryUri"
@@ -93,7 +93,8 @@ object VaultImageLoader {
     val keys = KeyManager.get(ctx)
     return keys.withDek { dek ->
       if (req.frameTimeMs >= 0) {
-        EncryptedMediaDataSource.frameAt(VaultPaths.blob(ctx, req.itemId), dek, req.frameTimeMs * 1000, 200)
+        val size = if (req.full) req.maxSide else 200
+        EncryptedMediaDataSource.frameAt(VaultPaths.blob(ctx, req.itemId), dek, req.frameTimeMs * 1000, size)
       } else if (req.full) {
         val bytes = EncryptedFile.decryptToBytes(VaultPaths.blob(ctx, req.itemId), dek)
         try {

@@ -7,7 +7,7 @@ export type RootStackParamList = {
   Album: { albumId: string | null; title: string };
   Viewer: { index: number; albumId: string | null };
   Player: { itemId: string; name: string };
-  Crop: { itemId: string; version: number };
+  Crop: { itemId: string; version: number; isVideo?: boolean };
   Trim: { itemId: string; name: string };
   GalleryPicker: { albumId: string | null };
   Settings: undefined;

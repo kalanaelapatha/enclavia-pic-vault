@@ -157,13 +157,14 @@ export function ViewerScreen({ navigation, route }: ScreenProps<'Viewer'>) {
             </Text>
           </View>
           <View style={[styles.bottom, { paddingBottom: insets.bottom + space.sm }]}>
+            {current.type === 'video' ? (
+              <BarButton icon="scissors" label="Cut" onPress={() => navigation.navigate('Trim', { itemId: current.id, name: current.name })} />
+            ) : null}
             <BarButton
-              icon={current.type === 'video' ? 'scissors' : 'crop'}
-              label={current.type === 'video' ? 'Cut' : 'Crop'}
+              icon="crop"
+              label="Crop"
               onPress={() =>
-                current.type === 'video'
-                  ? navigation.navigate('Trim', { itemId: current.id, name: current.name })
-                  : navigation.navigate('Crop', { itemId: current.id, version: current.importedAt })
+                navigation.navigate('Crop', { itemId: current.id, version: current.importedAt, isVideo: current.type === 'video' })
               }
             />
             <BarButton icon="download" label="Save" onPress={() => actions.exportItems([current.id])} />

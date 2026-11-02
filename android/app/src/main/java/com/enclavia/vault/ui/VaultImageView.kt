@@ -54,8 +54,9 @@ class VaultImageView(private val reactContext: ThemedReactContext) : View(reactC
   // ---------------------------------------------------------------- props
 
   fun commitProps() {
-    val full = variant == "full"
-    val frame = variant == "frame"
+    // "poster" is a large still frame of a vault video (used by video crop).
+    val full = variant == "full" || variant == "poster"
+    val frame = variant == "frame" || variant == "poster"
     val longSide = max(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
     val req = VaultImageLoader.Request(
       itemId = itemId,

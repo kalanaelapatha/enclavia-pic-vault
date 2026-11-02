@@ -14,6 +14,7 @@ import com.enclavia.vault.data.VaultPaths
 import com.enclavia.vault.media.Gallery
 import com.enclavia.vault.media.MediaEditor
 import com.enclavia.vault.media.MediaTransfer
+import com.enclavia.vault.media.VideoTranscoder
 import com.enclavia.vault.specs.NativeVaultSpec
 import com.enclavia.vault.ui.VaultImageLoader
 import com.facebook.react.bridge.Arguments
@@ -32,6 +33,7 @@ class VaultModule(private val context: ReactApplicationContext) : NativeVaultSpe
     private const val EVT_LOCKED = "EnclaviaLocked"
     private const val EVT_IMPORT = "EnclaviaImportProgress"
     private const val EVT_EXPORT = "EnclaviaExportProgress"
+    private const val EVT_EDIT = "EnclaviaEditProgress"
     private const val NAME_MAX = 60
   }
 
@@ -47,6 +49,7 @@ class VaultModule(private val context: ReactApplicationContext) : NativeVaultSpe
   private val worker = Executors.newFixedThreadPool(2) { Thread(it, "vault-worker") }
 
   @Volatile private var cancelImportRequested = false
+  @Volatile private var activeTranscoder: VideoTranscoder? = null
   private var pendingDelete: Promise? = null
 
   private val lockListener: () -> Unit = { context.emitDeviceEvent(EVT_LOCKED, null) }
@@ -83,6 +86,8 @@ class VaultModule(private val context: ReactApplicationContext) : NativeVaultSpe
         promise.resolve(block())
       } catch (e: VaultLockedException) {
         promise.reject("E_LOCKED", "Vault is locked")
+      } catch (e: java.util.concurrent.CancellationException) {
+        promise.reject("E_CANCELLED", "Cancelled")
       } catch (e: IllegalArgumentException) {
         promise.reject("E_INVALID", e.message ?: "Invalid input")
       } catch (e: Throwable) {
@@ -376,6 +381,32 @@ class VaultModule(private val context: ReactApplicationContext) : NativeVaultSpe
       VaultImageLoader.clear()
       item.toMap()
     }
+
+  override fun cropVideo(
+    id: String, rotation: Double, x: Double, y: Double, width: Double, height: Double,
+    replace: Boolean, promise: Promise,
+  ) = runOn(io, promise) {
+    val transcoder = VideoTranscoder(context)
+    activeTranscoder = transcoder
+    try {
+      val item = keys.withDek { dek ->
+        editor.cropVideo(requireItem(id, dek), rotation.toInt(), x, y, width, height, replace, dek, transcoder) { pct ->
+          context.emitDeviceEvent(EVT_EDIT, Arguments.createMap().apply {
+            putInt("done", pct)
+            putInt("total", 100)
+          })
+        }
+      }
+      VaultImageLoader.clear()
+      item.toMap()
+    } finally {
+      activeTranscoder = null
+    }
+  }
+
+  override fun cancelEdit() {
+    activeTranscoder?.cancel()
+  }
 
   override fun wipeVault(promise: Promise) = runOn(io, promise) {
     if (!keys.isUnlocked()) throw VaultLockedException()

@@ -139,46 +139,82 @@ class MediaEditor(private val ctx: Context) {
     require(item.type == "video") { "Not a video" }
     require(endMs - startMs >= 500) { "Clip is too short" }
     val blob = VaultPaths.blob(ctx, item.id)
-
     val estimate = (item.size.toDouble() * (endMs - startMs) / item.durationMs.coerceAtLeast(1)).toLong()
-    val useMemory = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && estimate < MEMFD_LIMIT
+
+    return withScratch(estimate) { fd ->
+      val outDurationMs = remux(blob, dek, fd, startMs * 1000, endMs * 1000) / 1000
+      val info = info(item, dek)
+      val thumb = thumbnailOf(fd)
+      val name = editedName(item.name, ".mp4", "cut", replace)
+      Os.lseek(fd, 0, OsConstants.SEEK_SET)
+      FdInputStream(fd).use { input ->
+        commit(item, replace, input, thumb, "video/mp4", name, info.width, info.height, outDurationMs, dek)
+      }
+    }
+  }
+
+  // ================================================================ video crop
+
+  /**
+   * Rotates (clockwise) then crops the video frame to the normalised rect. The video is
+   * re-encoded (H.264) on the phone's hardware encoder; audio is kept as is.
+   */
+  fun cropVideo(
+    item: VaultItem, rotation: Int, nx: Double, ny: Double, nw: Double, nh: Double,
+    replace: Boolean, dek: ByteArray, transcoder: VideoTranscoder, onProgress: (Int) -> Unit,
+  ): VaultItem {
+    require(item.type == "video") { "Not a video" }
+    require(rotation in setOf(0, 90, 180, 270)) { "Invalid rotation" }
+    require(nw > 0 && nh > 0) { "Empty crop" }
+    val info = info(item, dek)
+    require(info.width > 0 && info.height > 0) { "Unknown video size" }
+
+    // Re-encoding can grow the file a little; leave headroom before choosing RAM.
+    return withScratch(item.size * 3 / 2) { fd ->
+      val out = transcoder.run(item.id, info.width, info.height, rotation, nx, ny, nw, nh, fd, onProgress)
+      val thumb = thumbnailOf(fd)
+      val name = editedName(item.name, ".mp4", "crop", replace)
+      Os.lseek(fd, 0, OsConstants.SEEK_SET)
+      FdInputStream(fd).use { input ->
+        commit(item, replace, input, thumb, "video/mp4", name, out.width, out.height, out.durationMs, dek)
+      }
+    }
+  }
+
+  /**
+   * Gives [block] a scratch file for decrypted output: RAM only (memfd) on Android 11+ when it
+   * fits, otherwise a private temp file that is deleted afterwards.
+   */
+  private fun <T> withScratch(estimatedBytes: Long, block: (FileDescriptor) -> T): T {
+    val useMemory = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && estimatedBytes < MEMFD_LIMIT
     val tmpFile = File(VaultPaths.blobs(ctx), "${UUID.randomUUID()}.part")
     val fd: FileDescriptor = if (useMemory) {
-      Os.memfd_create("enclavia-cut", 0) // anonymous RAM-backed file: never touches storage
+      Os.memfd_create("enclavia-edit", 0) // anonymous RAM-backed file: never touches storage
     } else {
       Os.open(tmpFile.absolutePath, OsConstants.O_RDWR or OsConstants.O_CREAT or OsConstants.O_TRUNC, 0x180)
     }
-
     try {
-      val outDurationMs = remux(blob, dek, fd, startMs * 1000, endMs * 1000) / 1000
-      Os.lseek(fd, 0, OsConstants.SEEK_SET)
-
-      val info = info(item, dek)
-
-      // Thumbnail from the cut itself (read straight from the RAM/temp copy).
-      val thumb = runCatching {
-        val r = MediaMetadataRetriever()
-        try {
-          r.setDataSource(fd)
-          val bmp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1)
-            r.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, Imaging.THUMB_SIZE, Imaging.THUMB_SIZE)
-          else r.getFrameAtTime(0)?.let { Imaging.scaleDown(it, Imaging.THUMB_SIZE) }
-          bmp?.let { Imaging.toJpeg(it) }
-        } finally {
-          r.release()
-        }
-      }.getOrNull()
-
-      Os.lseek(fd, 0, OsConstants.SEEK_SET)
-      val name = editedName(item.name, ".mp4", "cut", replace)
-      return FdInputStream(fd).use { input ->
-        commit(item, replace, input, thumb, "video/mp4", name, info.width, info.height, outDurationMs, dek)
-      }
+      return block(fd)
     } finally {
       runCatching { Os.close(fd) }
       tmpFile.delete()
     }
   }
+
+  /** Thumbnail taken straight from an edited (RAM/temp) video. */
+  private fun thumbnailOf(fd: FileDescriptor): ByteArray? = runCatching {
+    Os.lseek(fd, 0, OsConstants.SEEK_SET)
+    val r = MediaMetadataRetriever()
+    try {
+      r.setDataSource(fd)
+      val bmp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1)
+        r.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, Imaging.THUMB_SIZE, Imaging.THUMB_SIZE)
+      else r.getFrameAtTime(0)?.let { Imaging.scaleDown(it, Imaging.THUMB_SIZE) }
+      bmp?.let { Imaging.toJpeg(it) }
+    } finally {
+      r.release()
+    }
+  }.getOrNull()
 
   /** Copies samples in [startUs, endUs] into an MP4 written to [out]. Returns the output duration (µs). */
   private fun remux(blob: File, dek: ByteArray, out: FileDescriptor, startUs: Long, endUs: Long): Long {

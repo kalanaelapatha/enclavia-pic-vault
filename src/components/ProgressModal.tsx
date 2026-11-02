@@ -9,19 +9,19 @@ type Props = {
   done: number;
   total: number;
   note?: string;
+  /** Replaces the default "done of total" line. */
+  caption?: string;
   onCancel?: () => void;
 };
 
-export function ProgressModal({ visible, title, done, total, note, onCancel }: Props) {
+export function ProgressModal({ visible, title, done, total, note, caption, onCancel }: Props) {
   const pct = total > 0 ? Math.min(1, done / total) : 0;
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => onCancel?.()}>
       <View style={styles.center}>
         <View style={styles.card}>
           <Text style={type.heading}>{title}</Text>
-          <Text style={type.caption}>
-            {done} of {total}
-          </Text>
+          <Text style={type.caption}>{caption ?? `${done} of ${total}`}</Text>
           <View style={styles.track}>
             <View style={[styles.fill, { width: `${Math.round(pct * 100)}%` }]} />
           </View>

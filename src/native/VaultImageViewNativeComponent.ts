@@ -10,8 +10,8 @@ export interface NativeProps extends ViewProps {
   /** MediaStore URI for browsing the device gallery. */
   galleryUri?: CT.WithDefault<string, ''>;
   galleryIsVideo?: CT.WithDefault<boolean, false>;
-  variant?: CT.WithDefault<'thumb' | 'full' | 'frame', 'thumb'>;
-  /** For variant="frame": position in the vault video to show. */
+  variant?: CT.WithDefault<'thumb' | 'full' | 'frame' | 'poster', 'thumb'>;
+  /** For variant="frame" (strip) or "poster" (large): position in the vault video to show. */
   frameTimeMs?: CT.WithDefault<CT.Double, 0>;
   /** Change to force a reload after the item was edited in place. */
   version?: CT.WithDefault<CT.Double, 0>;
