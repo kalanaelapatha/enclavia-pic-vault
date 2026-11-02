@@ -26,7 +26,14 @@ export function LockScreen() {
     if (!lockedOut) {
       return;
     }
-    const t = setInterval(() => setNow(Date.now()), 500);
+    // The native side times the lockout on the boot clock; re-read it so a clock change
+    // can't leave a wrong countdown on screen.
+    const t = setInterval(() => {
+      Vault.getSessionState()
+        .then(s => setLockoutUntil(s.lockoutUntil))
+        .catch(() => {})
+        .finally(() => setNow(Date.now()));
+    }, 1000);
     return () => clearInterval(t);
   }, [lockedOut]);
 

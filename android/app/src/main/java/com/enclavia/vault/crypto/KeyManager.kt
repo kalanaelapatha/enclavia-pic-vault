@@ -1,11 +1,15 @@
 package com.enclavia.vault.crypto
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -31,7 +35,8 @@ class VaultLockedException : IllegalStateException("Vault is locked")
  *    └─ PIN wrap:        Keystore_AES( AES-GCM( PBKDF2(PIN, salt), DEK ) )
  *    │                   -> PIN guessing must happen on this device (hardware-bound key)
  *
- * Wrong PIN attempts are rate limited with an exponential lockout.
+ * Wrong PIN attempts are rate limited with an exponential lockout. The lockout is timed with the
+ * time since boot, so changing the phone's clock can't shorten it.
  */
 class KeyManager private constructor(context: Context) {
 
@@ -50,7 +55,9 @@ class KeyManager private constructor(context: Context) {
     private const val K_SALT = "pin_salt"
     private const val K_ITER = "pin_iter"
     private const val K_FAILS = "fail_count"
-    private const val K_LOCKOUT = "lockout_until"
+    private const val K_LOCK_MS = "lockout_ms"
+    private const val K_LOCK_END = "lockout_end_elapsed"
+    private const val K_LOCK_BOOT = "lockout_boot"
     private const val K_AUTOLOCK = "autolock_ms"
     private val PIN_AAD = "enclavia-dek-pin-v1".toByteArray()
 
@@ -71,6 +78,24 @@ class KeyManager private constructor(context: Context) {
 
   @Volatile private var dek: ByteArray? = null
 
+  /** elapsedRealtime when the app went to the background; 0 while visible. */
+  @Volatile private var hiddenAt = 0L
+
+  init {
+    // Turning the screen off always locks, whatever the auto-lock delay is.
+    val receiver = object : BroadcastReceiver() {
+      override fun onReceive(c: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_SCREEN_OFF) lock()
+      }
+    }
+    val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+    } else {
+      appContext.registerReceiver(receiver, filter)
+    }
+  }
+
   // ---------------------------------------------------------------- state
 
   fun isSetup(): Boolean = prefs.contains(K_DEK_PIN)
@@ -79,7 +104,49 @@ class KeyManager private constructor(context: Context) {
 
   fun failedAttempts(): Int = prefs.getInt(K_FAILS, 0)
 
-  fun lockoutUntil(): Long = prefs.getLong(K_LOCKOUT, 0L)
+  /** Wall-clock end of the current lockout, for the countdown on screen (0 = none). */
+  fun lockoutUntil(): Long {
+    val left = lockoutRemaining()
+    return if (left > 0) System.currentTimeMillis() + left else 0L
+  }
+
+  private fun bootCount(): Int =
+    runCatching { Settings.Global.getInt(appContext.contentResolver, Settings.Global.BOOT_COUNT) }.getOrDefault(-1)
+
+  /** Lockout time left, measured on the boot clock (not changeable from Settings). */
+  private fun lockoutRemaining(): Long {
+    val duration = prefs.getLong(K_LOCK_MS, 0L)
+    if (duration <= 0L) return 0L
+    val now = SystemClock.elapsedRealtime()
+    val end = prefs.getLong(K_LOCK_END, 0L)
+    val boot = bootCount()
+    val sameBoot = if (boot != -1) boot == prefs.getInt(K_LOCK_BOOT, -2) else now >= end - duration
+    // After a restart the boot clock starts again from zero: wait the full lockout since boot.
+    val deadline = if (sameBoot) end else duration
+    return (deadline - now).coerceIn(0L, duration)
+  }
+
+  /**
+   * Counts a failed attempt *before* the PIN is checked, so stopping the app mid-check
+   * can't give a free guess. [clearFailures] undoes it when the PIN is right.
+   */
+  private fun recordFailedAttempt(): Int {
+    val fails = failedAttempts() + 1
+    val duration = if (fails >= FREE_ATTEMPTS) {
+      (BASE_LOCKOUT_MS shl (fails - FREE_ATTEMPTS).coerceAtMost(10)).coerceAtMost(MAX_LOCKOUT_MS)
+    } else 0L
+    prefs.edit()
+      .putInt(K_FAILS, fails)
+      .putLong(K_LOCK_MS, duration)
+      .putLong(K_LOCK_END, SystemClock.elapsedRealtime() + duration)
+      .putInt(K_LOCK_BOOT, bootCount())
+      .commit()
+    return fails
+  }
+
+  private fun clearFailures() {
+    prefs.edit().putInt(K_FAILS, 0).putLong(K_LOCK_MS, 0L).commit()
+  }
 
   /**
    * Runs [block] with a private copy of the DEK, so a concurrent lock() can never
@@ -106,37 +173,32 @@ class KeyManager private constructor(context: Context) {
     validatePin(pin)
     val newDek = ByteArray(32).also { rng.nextBytes(it) }
     writePinWrap(pin, newDek)
-    prefs.edit().putInt(K_FAILS, 0).putLong(K_LOCKOUT, 0L).commit()
+    clearFailures()
     dek = newDek
   }
 
   @Synchronized
   fun unlockWithPin(pin: String): UnlockResult {
-    val now = System.currentTimeMillis()
-    val lockout = lockoutUntil()
-    if (now < lockout) return UnlockResult(false, failedAttempts(), lockout)
-
+    if (lockoutRemaining() > 0) return UnlockResult(false, failedAttempts(), lockoutUntil())
+    val fails = recordFailedAttempt()
     val opened = tryOpenPinWrap(pin)
     if (opened != null) {
       dek?.fill(0)
       dek = opened
-      prefs.edit().putInt(K_FAILS, 0).putLong(K_LOCKOUT, 0L).commit()
+      clearFailures()
       return UnlockResult(true, 0, 0L)
     }
-    val fails = failedAttempts() + 1
-    var until = 0L
-    if (fails >= FREE_ATTEMPTS) {
-      val shift = (fails - FREE_ATTEMPTS).coerceAtMost(10)
-      until = now + (BASE_LOCKOUT_MS shl shift).coerceAtMost(MAX_LOCKOUT_MS)
-    }
-    prefs.edit().putInt(K_FAILS, fails).putLong(K_LOCKOUT, until).commit()
-    return UnlockResult(false, fails, until)
+    return UnlockResult(false, fails, lockoutUntil())
   }
 
+  /** Returns false for a wrong current PIN. Wrong guesses count towards the same lockout as unlocking. */
   @Synchronized
   fun changePin(oldPin: String, newPin: String): Boolean {
     validatePin(newPin)
+    check(lockoutRemaining() == 0L) { "Too many wrong PINs. Try again later." }
+    recordFailedAttempt()
     val current = tryOpenPinWrap(oldPin) ?: return false
+    clearFailures()
     try {
       writePinWrap(newPin, current)
     } finally {
@@ -145,9 +207,14 @@ class KeyManager private constructor(context: Context) {
     return true
   }
 
+  /** Same rules as the app's PIN screen, enforced here too. */
   private fun validatePin(pin: String) {
     require(pin.length in MIN_PIN_LENGTH..MAX_PIN_LENGTH && pin.all { it.isDigit() }) {
       "PIN must be $MIN_PIN_LENGTH-$MAX_PIN_LENGTH digits"
+    }
+    require(pin.toSet().size > 1) { "Avoid repeating the same digit" }
+    require(!"01234567890123456789".contains(pin) && !"98765432109876543210".contains(pin)) {
+      "Avoid simple sequences"
     }
   }
 
@@ -221,11 +288,16 @@ class KeyManager private constructor(context: Context) {
   fun onAppHidden() {
     if (!isUnlocked()) return
     val timeout = autoLockMs()
+    hiddenAt = SystemClock.elapsedRealtime()
     if (timeout <= 0L) lock() else mainHandler.postDelayed(lockRunnable, timeout)
   }
 
   fun onAppVisible() {
     mainHandler.removeCallbacks(lockRunnable)
+    // The delayed lock doesn't run while the phone sleeps; check the real time that has passed.
+    val since = hiddenAt
+    hiddenAt = 0L
+    if (since > 0L && SystemClock.elapsedRealtime() - since >= autoLockMs()) lock()
   }
 
   // ---------------------------------------------------------------- wipe

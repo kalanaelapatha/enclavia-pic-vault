@@ -79,7 +79,8 @@ android {
 
     namespace "com.enclavia.vault"
     defaultConfig {
-        applicationId "com.enclavia.vault"
+        // QA builds get their own app id, so a QA APK can never replace (or read) the real vault.
+        applicationId((project.findProperty("enclavia.qa") == "true") ? "com.enclavia.vault.qa" : "com.enclavia.vault")
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

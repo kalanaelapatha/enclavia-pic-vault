@@ -60,6 +60,12 @@ content.
 - **PIN:** 6–16 digits. Weak PINs (repeated digits, simple sequences) are rejected. The PIN is
   entered on a custom keypad, never the system keyboard, so keyboard apps can't record it.
 - **Lockout:** 5 free attempts, then 30 s doubling up to 1 h (`KeyManager.unlockWithPin`).
+  - The lockout runs on the boot clock (`elapsedRealtime` + boot count), so changing the phone's
+    date or time doesn't shorten it. After a restart, the full lockout applies again from boot.
+  - Each attempt is counted *before* the PIN is checked, so force-stopping the app mid-check
+    doesn't give a free guess.
+  - Wrong current PINs on the Change PIN screen count towards the same lockout.
+  - The weak-PIN rules (repeated digits, simple sequences) are enforced natively as well as in the UI.
 - **Offline brute force:** the PIN-wrapped key is also wrapped by a non-exportable Keystore key.
   Guessing therefore has to run on the device itself, at PBKDF2 cost per guess.
 - **PIN only:** no accounts, no Google/Gmail sign-in, no fingerprint or face unlock. The PIN is the
@@ -68,8 +74,23 @@ content.
 ## Runtime protections
 
 - `FLAG_SECURE` blocks screenshots (only a QA build made with `-Penclavia.qa=true` turns it off), screen recording, casting and the recent-apps thumbnail.
+- Alert dialogs (which can show album names) also get `FLAG_SECURE`. On Android 13+, the
+  recent-apps screenshot is turned off as well.
 - `filterTouchesWhenObscured` drops touches while another app's window covers ours (tapjacking).
-- **Auto-lock** runs on `onStop`: immediately by default, or after 30 s, 1 min or 5 min. Locking
+  On Android 12+, other apps' floating windows are hidden while Enclavia is on screen
+  (`setHideOverlayWindows`).
+- Other apps can't read the screen contents:
+  - autofill is off for the whole window;
+  - on-device content capture is off (Android 10+);
+  - on Android 14+, the window is marked accessibility-data-sensitive, so only real accessibility
+    tools such as TalkBack can read or tap it.
+- The app exposes nothing to other apps: the launcher screen is the only exported component, and
+  it has no deep links. There are no services, content providers or broadcast receivers that other
+  apps can reach. The only exception is the AndroidX profile installer, which requires the
+  system-only `DUMP` permission.
+- **Screen off always locks immediately**, whatever the auto-lock setting.
+- **Auto-lock** runs on `onStop`: immediately by default, or after 30 s, 1 min or 5 min. The delay
+  is measured in real time, including deep sleep. Locking
   wipes the DEK, clears every decoded-bitmap cache, stops video playback, and unmounts every vault
   screen (auth-gated navigator).
 - System dialogs (permission, delete confirmation) only trigger `onPause`, so they don't
@@ -87,6 +108,10 @@ content.
   - Names are sanitised and length-capped.
 - **Release hardening:** R8 minification and resource shrinking, `debuggable=false`, verbose
   `Log` calls stripped, and a dedicated 4096-bit RSA signing key.
+  - `debuggable=false` means `run-as`, debugger attach and heap dumps aren't possible without root.
+  - QA builds (screenshots allowed) use a separate app id, `com.enclavia.vault.qa`, so they can
+    never replace or read the real vault.
+  - Debug builds are signed with a different key, so they can't replace a release install either.
 
 ## Residual risks (by design or out of scope)
 
@@ -98,5 +123,8 @@ content.
 - Flash storage can't guarantee secure erase of the original gallery file. Deletion goes through
   MediaStore. Cloud copies are outside the app's control.
 - Exported copies are plaintext in the shared gallery. The app warns before every export.
-- The lockout timer uses wall-clock time, so changing the device clock can shorten it. The PBKDF2
-  cost and the Keystore binding still apply.
+- On Android 13 and older, a malicious accessibility service that the user has enabled can read
+  the screen, including which PIN keys are pressed. Only grant accessibility access to apps you
+  trust.
+- The phone's own gallery or cloud app (Google Photos, Mi Cloud, the MIUI Gallery "Recently
+  deleted" bin) may still hold a copy of an imported file.

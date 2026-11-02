@@ -88,6 +88,7 @@ object VaultImageLoader {
 
   private fun decode(ctx: Context, req: Request): Bitmap? {
     if (req.galleryUri.isNotEmpty()) {
+      if (!KeyManager.get(ctx).isUnlocked()) return null
       return Imaging.galleryThumbnail(ctx, Uri.parse(req.galleryUri), req.galleryIsVideo)
     }
     val keys = KeyManager.get(ctx)

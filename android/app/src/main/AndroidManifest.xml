@@ -17,6 +17,10 @@
     <!-- Android 8-10: delete originals / export copies -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"
         tools:ignore="ScopedStorage" />
+    <!-- Android 12+: hide other apps' floating windows while the vault is on screen (normal permission, no prompt). -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
+    <!-- Short buzz on a wrong PIN (without it, vibrating throws and closes the app). -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
       android:name=".MainApplication"

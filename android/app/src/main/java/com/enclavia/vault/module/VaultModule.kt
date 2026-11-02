@@ -139,11 +139,19 @@ class VaultModule(private val context: ReactApplicationContext) : NativeVaultSpe
 
   override fun lock() = keys.lock()
 
-  override fun setAutoLockMs(ms: Double) = keys.setAutoLockMs(ms.toLong())
+  override fun setAutoLockMs(ms: Double) {
+    if (keys.isUnlocked()) keys.setAutoLockMs(ms.toLong())
+  }
+
+  /** Gallery access is part of the unlocked app too; nothing is served from the lock screen. */
+  private fun requireUnlocked() {
+    if (!keys.isUnlocked()) throw VaultLockedException()
+  }
 
   // ================================================================ gallery
 
   override fun getGalleryAlbums(promise: Promise) = runOn(worker, promise) {
+    requireUnlocked()
     Arguments.createArray().apply {
       Gallery.albums(context).forEach { a ->
         pushMap(Arguments.createMap().apply {
@@ -158,6 +166,7 @@ class VaultModule(private val context: ReactApplicationContext) : NativeVaultSpe
 
   override fun getGalleryMedia(bucketId: String, offset: Double, limit: Double, promise: Promise) =
     runOn(worker, promise) {
+      requireUnlocked()
       Arguments.createArray().apply {
         Gallery.media(context, bucketId, offset.toInt().coerceAtLeast(0), limit.toInt().coerceIn(1, 500)).forEach { m ->
           pushMap(Arguments.createMap().apply {
@@ -177,6 +186,10 @@ class VaultModule(private val context: ReactApplicationContext) : NativeVaultSpe
     }
 
   override fun deleteFromGallery(uris: ReadableArray, promise: Promise) {
+    if (!keys.isUnlocked()) {
+      promise.reject("E_LOCKED", "Vault is locked")
+      return
+    }
     val parsed = try {
       uris.strings().map { Gallery.parseMediaUri(it) }
     } catch (e: Throwable) {
