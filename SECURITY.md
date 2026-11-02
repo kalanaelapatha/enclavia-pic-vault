@@ -76,6 +76,11 @@ content.
   lock the vault.
 - Every TurboModule operation takes a private copy of the DEK and wipes it afterwards. A concurrent
   lock can never corrupt an in-progress write.
+- **Editing** (photo crop, video cut, video crop): output is re-encrypted and hash-verified before
+  it replaces anything. Unencrypted video output is written to an anonymous RAM file (`memfd`,
+  Android 11+, under 400 MB) or otherwise to a private temp file that is deleted right away.
+  Video crop decodes straight from the encrypted file, keeps only the orientation tag (location
+  and other metadata are dropped), and is cancelled if the vault locks.
 - Input validation:
   - Item and album ids must be UUIDs, so they can't be used for path traversal.
   - Gallery URIs must be `content://media/...`.

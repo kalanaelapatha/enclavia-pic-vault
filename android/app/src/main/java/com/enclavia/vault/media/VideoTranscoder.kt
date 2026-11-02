@@ -205,7 +205,13 @@ class VideoTranscoder(private val ctx: Context) {
 
   /** Keeps only orientation; drops location and every other piece of source metadata. */
   private class MetadataFilter(private val inner: Muxer) : Muxer {
-    override fun addTrack(format: Format): Int = inner.addTrack(format)
+    override fun addTrack(format: Format): Int {
+      // The encoder may store frames rotated and ask for display rotation via the format.
+      if (MimeTypes.isVideo(format.sampleMimeType) && format.rotationDegrees != 0) {
+        inner.addMetadataEntry(Mp4OrientationData(format.rotationDegrees))
+      }
+      return inner.addTrack(format)
+    }
     override fun writeSampleData(trackId: Int, data: ByteBuffer, bufferInfo: BufferInfo) =
       inner.writeSampleData(trackId, data, bufferInfo)
     override fun addMetadataEntry(metadataEntry: Metadata.Entry) {
